@@ -1,5 +1,6 @@
 import turtle
 from PIL import Image
+import os
 
 # Init some constants
 HEXAGON_LENGTHS = 200
@@ -50,9 +51,13 @@ pen.circle(50)
 # Hide the turtle
 pen.hideturtle()
 
+# filepaths
+ps_output_dir = "./postscript_files"
+full_path = os.path.join(ps_output_dir, "hexagon_junction.ps")
+
 # Save the image as PostScript file
 canvas = turtle.getcanvas()
-canvas.postscript(file="hexagon_junction.ps")
+canvas.postscript(file=full_path)
 
 # Convert PostScript file to PNG using Pillow
 img = Image.open("hexagon_junction.ps")
