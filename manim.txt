@@ -1,5 +1,0 @@
-Installed FFmpeg to C:/Program Files
-
-Installed MiKTeX to C:\Users\mattm\AppData\Local\Programs\MiKTeX
-
-Installed manim to C:\Users\mattm\Projects
