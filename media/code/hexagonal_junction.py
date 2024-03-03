@@ -59,9 +59,5 @@ full_path = os.path.join(ps_output_dir, "hexagon_junction.ps")
 canvas = turtle.getcanvas()
 canvas.postscript(file=full_path)
 
-# Convert PostScript file to PNG using Pillow
-img = Image.open("hexagon_junction.ps")
-img.save("./images/hexagon_junction.png", "png")
-
 # To prevent the window from closing immediately
 turtle.done()
