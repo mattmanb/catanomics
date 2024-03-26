@@ -4,6 +4,8 @@ from resnet import BasicBlock, ResNet
 
 import cv2
 import numpy as np
+from PIL import Image
+import os
 
 def slope(x1,y1,x2,y2):
     ###finding slope
@@ -28,7 +30,25 @@ def calc_intersection(m1,b1,m2,b2):
 
     return solution
 
-def homography_board(image):
+def showImage(img, name=None):
+    if not name:
+        cv2.imshow("Image display", img)
+    else:
+        cv2.imshow(name, img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+def saveImage(filename, img, dir):
+    # Get full path
+    full_path = f"{dir}/{filename}"
+    cv2.imwrite(full_path, img)
+    print(f"Image saved to {full_path}")
+
+# DST POINTS for bounding boxes
+DST_PTS = []
+
+def homography_board(image_dir):
+    image = cv2.imread(image_dir)
     ## Get border image
     # Resize to 1052x1052
     image = cv2.resize(image, (1052, 1052))
@@ -111,6 +131,138 @@ def homography_board(image):
             elif perimeter_point[0] >= 0 and perimeter_point[0] <= image_width and perimeter_point[1] >= 0 and perimeter_point[1] <= image_height:
                 perimeter_points.append((round(perimeter_point[0]), 
                                           round(perimeter_point[1])))
+                
+    inverted_edges = 255 - edges
+    dist_transform = cv2.distanceTransform(inverted_edges, cv2.DIST_L2, 5)
+
+    good_pts = []
+
+    dist_threshold = 25
+
+    while len(good_pts) < 6:
+        good_pts = []
+        for i in range(len(perimeter_points)):
+            x, y = perimeter_points[i]
+            dist_to_edge = dist_transform[y, x]
+            if dist_to_edge < dist_threshold:
+                if len(good_pts) < 6:
+                    good_pts.append(perimeter_points[i])
+        dist_threshold += 5
+    
+    # Order the points
+    centroid = np.mean(good_pts, axis=0)
+    sorted_points = sorted(good_pts, key=lambda point: np.arctan2(point[1] - centroid[1], point[0] - centroid[0]))
+    
+    # Set up points for homography
+    src_points = np.array(sorted_points)
+    R = 526
+    center = np.array([R, R])
+
+    theta = np.pi / 2
+    rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)],
+                                [np.sin(theta), np.cos(theta)]])
+    hexagon_points = np.array([(center[0] + R * np.cos(2 * np.pi / 6 * i), center[1] + R * np.sin(2 * np.pi / 6 * i)) for i in range(6)])
+
+    dst_points = []
+
+    for point in hexagon_points:
+        translated_point = point - center
+        rotated_point = np.dot(rotation_matrix, translated_point)
+        dst_points.append([int(rotated_point[0]+R), int(rotated_point[1]+R)])
+    dst_points = np.array(dst_points)
+    DST_PTS = dst_points
+    ## HOMOGRAPHY
+    # Compute homography matrix
+    H, _ = cv2.findHomography(src_points, dst_points)
+
+    # Apply homography to warp the real test_image to the ideal Catan board's perspective
+    warped_image = cv2.warpPerspective(image, H, (1052, 1052))
+
+    return warped_image, dst_points
+
+def create_bb(image, center_point, sl, color):
+    """
+    image: the image to draw the bounding box on
+    center_point: the center point of the bounding box
+    sl: side length of the square bounding box
+    color: scalar color of the bounding box to be
+    """
+    tl_corner = (center_point[0] - int(sl/2), center_point[1] - int(sl/2)) # top left corner
+    tr_corner = (center_point[0] + int(sl/2), center_point[1] - int(sl/2)) # top right corner
+    bl_corner = (center_point[0] - int(sl/2), center_point[1] + int(sl/2)) # bottom left corner
+    br_corner = (center_point[0] + int(sl/2), center_point[1] + int(sl/2)) # bottom right corner
+
+    # draw the bounding box
+    # cv2.line(image, tl_corner, tr_corner, color, 3)
+    # cv2.line(image, tr_corner, br_corner, color, 3)
+    # cv2.line(image, br_corner, bl_corner, color, 3)
+    # cv2.line(image, bl_corner, tl_corner, color, 3)
+
+    return tl_corner[0], tl_corner[1], br_corner[0], br_corner[1]
+
+def save_num_images(image, dst_points, side_length, ind):
+    subimages = []
+    R = 526
+    for pt in dst_points:
+        delta_x = R - pt[0]
+        delta_y = R - pt[1]
+
+        x1, y1, x2, y2 = create_bb(image, 
+                                   (int((R + (7/24)*delta_x)), 
+                                    int((R + (7/24)*delta_y))), 
+                                   side_length, (255, 0, 0))
+        subimage1 = image[y1:y2, x1:x2]
+
+        x1, y1, x2, y2 = create_bb(image, 
+                                   (int((R + (3/5)*delta_x)), 
+                                    int((R + (3/5)*delta_y))), 
+                                    side_length, (255, 0, 0))
+        subimage2 = image[y1:y2, x1:x2]
+
+        print("appending two subimages")
+        subimages.append(subimage1)
+        subimages.append(subimage2)
+
+    for i in range(len(DST_PTS)):
+        # Draw lines between every other corner
+        next_point_ind = i+2
+        if i+2 >= len(DST_PTS):
+            next_point_ind = i+2-len(DST_PTS)
+
+        pt1 = [DST_PTS[i][0], DST_PTS[i][1]]
+        pt2 = [DST_PTS[next_point_ind][0], DST_PTS[next_point_ind][1]]
+
+        # Draw circles at varying distances
+        delta_x = pt2[0] - pt1[0]
+        delta_y = pt2[1] - pt1[1]
+
+        ## Tests
+        cir_pt = (int((pt1[0] + (1/3)*delta_x)), int((pt1[1] + (1/3)*delta_y)))
+
+        ### Shift the circle toward the center a bit
+        xfc = R - cir_pt[0] # x distance from center
+        yfc = R - cir_pt[1] # y distance from center
+
+        shift_factor = 0.10 # Shifts the center point closer to the center by a factor if this much
+
+        shifted_x = int(cir_pt[0] + shift_factor * xfc)
+        shifted_y = int(cir_pt[1] + shift_factor * yfc)
+
+        x1, y1, x2, y2 = create_bb(image, (shifted_x, shifted_y), sl=side_length, color=(0, 255, 0))
+        subimage = image[y1:y2, x1:x2]
+        subimages.append(subimage)
+
+    DIR = "./images/cropped/"
+    for img in subimages:
+        if ind < 10:
+            saveImage(f"00{ind}.jpg", img, DIR)
+        elif ind < 100:
+            saveImage(f"0{ind}.jpg", img, DIR)
+        else:
+            saveImage(f"{ind}.jpg", img, DIR)
+        ind += 1
+    
+    return ind
 
 def pred_nums_on_resnet(images) -> list:
     """
@@ -148,11 +300,41 @@ def pred_nums_on_resnet(images) -> list:
     # Put the model into eval mode
     resnet_model.eval()
     for image in images:
-        transformed_img = input_transform(image)
+        transformed_img = input_transform(Image.fromarray(image[:3, :, :]))
         with torch.inference_mode():
-            img_pred = resnet_model(transformed_img.unsqueezze(0).to(device))
+            img_pred = resnet_model((transformed_img.unsqueezze(0)).to(device))
         # Logits -> Predictions probabilites -> Prediction labels -> class name
         img_label = CLASS_NAMES[torch.argmax(torch.softmax(img_pred, dim=1), dim=1)]
         LABELS.append(img_label)
 
     return LABELS
+
+def show_predictions(subimages, labels):
+    for i in range(len(subimages)):
+        showImage(subimages[i], str(labels[i]))
+
+def main():
+    print("In main")
+    # Load in the images you want
+    test_img_dir = "./images/v4/"
+    ground_img_dirs = []
+    for filename in os.listdir(test_img_dir):
+        filepath = os.path.join(test_img_dir, filename)
+        if os.path.isfile(filepath):
+            ground_img_dirs.append(filepath)
+    print(ground_img_dirs[0])
+    # get homographied images
+    homographied_imgs = []
+    destination_point_lists = [] # list of lists that contain dst points for each image (used for finding bounding boxes)
+    for img in ground_img_dirs:
+        homographied_img, dst_points = homography_board(img)
+        homographied_imgs.append(homographied_img)
+        destination_point_lists.append(dst_points)
+    showImage(homographied_imgs[0])
+    # save number images for data
+    ind = 0
+    for i, img in enumerate(homographied_imgs):
+        ind = save_num_images(img, destination_point_lists[i], 60, ind)
+
+if __name__ == "__main__":
+    main()
