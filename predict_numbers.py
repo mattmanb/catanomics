@@ -44,11 +44,10 @@ def saveImage(filename, img, dir):
     cv2.imwrite(full_path, img)
     print(f"Image saved to {full_path}")
 
-# DST POINTS for bounding boxes
-DST_PTS = []
-
-def homography_board(image_dir):
+def homography_board(image_dir, vis=False):
     image = cv2.imread(image_dir)
+    if vis:
+        showImage(image, "Before")
     ## Get border image
     # Resize to 1052x1052
     image = cv2.resize(image, (1052, 1052))
@@ -67,6 +66,8 @@ def homography_board(image_dir):
     blurred_blue_region = cv2.GaussianBlur(gray_blue_region, (5,5), 0)
     # Canny Edge Detection
     edges = cv2.Canny(blurred_blue_region, 50, 150)
+    if vis:
+        showImage(edges, "EDGES")
 
     ## Hough Transform for perimiter lines
     lines = []
@@ -80,14 +81,15 @@ def homography_board(image_dir):
 
     # Find overlapping lines from hough transform
     min_rho_diff = 10 # the minimum distance between two lines to determine if they are for the same side
+    min_theta_diff = 0.05
     overlapping_indexes = set()
 
     while len(lines) - len(overlapping_indexes) > 6:
         for i in range(len(lines)):
-            rho, _ = lines[i, 0]
+            rho, theta = lines[i, 0]
             for j in range(i+1, len(lines)):
-                rho2, _ = lines[j, 0]
-                if abs(rho-rho2) < min_rho_diff:
+                rho2, theta2 = lines[j, 0]
+                if abs(rho-rho2) < min_rho_diff and abs(theta-theta2) < min_theta_diff:
                     overlapping_indexes.add(j)
         min_rho_diff += 1
     perimiter_lines = [] # these are the actual perimiter lines after overlap is removed
@@ -99,6 +101,7 @@ def homography_board(image_dir):
     ## Finding the perimiter POINTS from the perimiter lines
     line_coords = []
     for index, line in enumerate(perimiter_lines):
+    # for index, line in enumerate(lines):
         rho, theta = line[0]
         a = np.cos(theta)
         b = np.sin(theta)
@@ -109,7 +112,10 @@ def homography_board(image_dir):
         x2 = int(x0 - 1000 * (-b))
         y2 = int(y0 - 1000 * (a))
         line_coords.append([(x1, y1), (x2, y2)])
-    
+        if vis:
+            cv2.line(image, (x1, y1), (x2, y2), (255, 0, 0), 3)
+    if vis:
+        showImage(image)
     # Get the line equations
     line_equations = []
     for line in line_coords:
@@ -153,6 +159,12 @@ def homography_board(image_dir):
     centroid = np.mean(good_pts, axis=0)
     sorted_points = sorted(good_pts, key=lambda point: np.arctan2(point[1] - centroid[1], point[0] - centroid[0]))
     
+    # Visualize the points if wanted
+    if vis:
+        for pt in good_pts:
+            cv2.circle(image, pt, 5, (255, 255, 0), -1)
+        showImage(image, "Perimiter points")
+
     # Set up points for homography
     src_points = np.array(sorted_points)
     R = 526
@@ -177,10 +189,12 @@ def homography_board(image_dir):
 
     # Apply homography to warp the real test_image to the ideal Catan board's perspective
     warped_image = cv2.warpPerspective(image, H, (1052, 1052))
+    if vis:
+        showImage(warped_image, "After")
 
     return warped_image, dst_points
 
-def create_bb(image, center_point, sl, color):
+def create_bb(image, center_point, sl):
     """
     image: the image to draw the bounding box on
     center_point: the center point of the bounding box
@@ -200,9 +214,23 @@ def create_bb(image, center_point, sl, color):
 
     return tl_corner[0], tl_corner[1], br_corner[0], br_corner[1]
 
-def save_num_images(image, dst_points, side_length, ind):
+def save_num_images(image, dst_points, side_length, save_dir, ind):
+    """Finds and saves all the numbers on the Catan board of a homogrophied image
+    image: source image
+    dst_points: perimiter points of the board
+    sl: side length of bounding box for each number
+    save_dir: directory for images to be saved to
+    ind: how many images have already been saved to the directory
+    """
     subimages = []
     R = 526
+    # This is the actual center point
+    x1, y1, x2, y2 = create_bb(image,
+                               (R, R),
+                               side_length)
+    subimage_center = image[y1:y2, x1:x2]
+    subimages.append(subimage_center)
+    # This gets all the numbers that fall on the line between the center point of the board and the perimiter points
     for pt in dst_points:
         delta_x = R - pt[0]
         delta_y = R - pt[1]
@@ -210,27 +238,27 @@ def save_num_images(image, dst_points, side_length, ind):
         x1, y1, x2, y2 = create_bb(image, 
                                    (int((R + (7/24)*delta_x)), 
                                     int((R + (7/24)*delta_y))), 
-                                   side_length, (255, 0, 0))
+                                   side_length)
         subimage1 = image[y1:y2, x1:x2]
 
         x1, y1, x2, y2 = create_bb(image, 
                                    (int((R + (3/5)*delta_x)), 
                                     int((R + (3/5)*delta_y))), 
-                                    side_length, (255, 0, 0))
+                                    side_length)
         subimage2 = image[y1:y2, x1:x2]
 
-        print("appending two subimages")
         subimages.append(subimage1)
         subimages.append(subimage2)
 
-    for i in range(len(DST_PTS)):
+    # This gets all the numbers not found by the center lines to the perimiter points using every other perimiter point to find the numbers
+    for i in range(len(dst_points)):
         # Draw lines between every other corner
         next_point_ind = i+2
-        if i+2 >= len(DST_PTS):
-            next_point_ind = i+2-len(DST_PTS)
+        if i+2 >= len(dst_points):
+            next_point_ind = i+2-len(dst_points)
 
-        pt1 = [DST_PTS[i][0], DST_PTS[i][1]]
-        pt2 = [DST_PTS[next_point_ind][0], DST_PTS[next_point_ind][1]]
+        pt1 = [dst_points[i][0], dst_points[i][1]]
+        pt2 = [dst_points[next_point_ind][0], dst_points[next_point_ind][1]]
 
         # Draw circles at varying distances
         delta_x = pt2[0] - pt1[0]
@@ -248,18 +276,18 @@ def save_num_images(image, dst_points, side_length, ind):
         shifted_x = int(cir_pt[0] + shift_factor * xfc)
         shifted_y = int(cir_pt[1] + shift_factor * yfc)
 
-        x1, y1, x2, y2 = create_bb(image, (shifted_x, shifted_y), sl=side_length, color=(0, 255, 0))
+        x1, y1, x2, y2 = create_bb(image, (shifted_x, shifted_y), sl=side_length)
         subimage = image[y1:y2, x1:x2]
         subimages.append(subimage)
 
-    DIR = "./images/cropped/"
+    # Save the images
     for img in subimages:
         if ind < 10:
-            saveImage(f"00{ind}.jpg", img, DIR)
+            saveImage(f"00{ind}.jpg", img, save_dir)
         elif ind < 100:
-            saveImage(f"0{ind}.jpg", img, DIR)
+            saveImage(f"0{ind}.jpg", img, save_dir)
         else:
-            saveImage(f"{ind}.jpg", img, DIR)
+            saveImage(f"{ind}.jpg", img, save_dir)
         ind += 1
     
     return ind
@@ -316,7 +344,7 @@ def show_predictions(subimages, labels):
 def main():
     print("In main")
     # Load in the images you want
-    test_img_dir = "./images/v4/"
+    test_img_dir = "./images/v5/"
     ground_img_dirs = []
     for filename in os.listdir(test_img_dir):
         filepath = os.path.join(test_img_dir, filename)
@@ -333,8 +361,9 @@ def main():
     showImage(homographied_imgs[0])
     # save number images for data
     ind = 0
+    dir = "./images/cropped_numbers/"
     for i, img in enumerate(homographied_imgs):
-        ind = save_num_images(img, destination_point_lists[i], 60, ind)
+        ind = save_num_images(img, destination_point_lists[i], 60, dir, ind)
 
 if __name__ == "__main__":
     main()
