@@ -1,4 +1,5 @@
 import torch
+import torchvision
 from torchvision import transforms
 from resnet import BasicBlock, ResNet
 
@@ -6,6 +7,7 @@ import cv2
 import numpy as np
 from PIL import Image
 import os
+import random
 
 def slope(x1,y1,x2,y2):
     ###finding slope
@@ -292,17 +294,154 @@ def save_num_images(image, dst_points, side_length, save_dir, ind):
     
     return ind
 
-def pred_nums_on_resnet(images) -> list:
+def get_num_images(image, dst_points, side_length):
+    """Finds and saves all the numbers on the Catan board of a homogrophied image
+    image: source image
+    dst_points: perimiter points of the board
+    sl: side length of bounding box for each number
+    save_dir: directory for images to be saved to
+    ind: how many images have already been saved to the directory
+    """
+    subimages = []
+    R = 526
+    # This is the actual center point
+    x1, y1, x2, y2 = create_bb(image,
+                               (R, R),
+                               side_length)
+    subimage_center = image[y1:y2, x1:x2]
+    subimages.append(subimage_center)
+    # This gets all the numbers that fall on the line between the center point of the board and the perimiter points
+    for pt in dst_points:
+        delta_x = R - pt[0]
+        delta_y = R - pt[1]
+
+        x1, y1, x2, y2 = create_bb(image, 
+                                   (int((R + (7/24)*delta_x)), 
+                                    int((R + (7/24)*delta_y))), 
+                                   side_length)
+        subimage1 = image[y1:y2, x1:x2]
+
+        x1, y1, x2, y2 = create_bb(image, 
+                                   (int((R + (3/5)*delta_x)), 
+                                    int((R + (3/5)*delta_y))), 
+                                    side_length)
+        subimage2 = image[y1:y2, x1:x2]
+
+        subimages.append(subimage1)
+        subimages.append(subimage2)
+
+    # This gets all the numbers not found by the center lines to the perimiter points using every other perimiter point to find the numbers
+    for i in range(len(dst_points)):
+        # Draw lines between every other corner
+        next_point_ind = i+2
+        if i+2 >= len(dst_points):
+            next_point_ind = i+2-len(dst_points)
+
+        pt1 = [dst_points[i][0], dst_points[i][1]]
+        pt2 = [dst_points[next_point_ind][0], dst_points[next_point_ind][1]]
+
+        # Draw circles at varying distances
+        delta_x = pt2[0] - pt1[0]
+        delta_y = pt2[1] - pt1[1]
+
+        ## Tests
+        cir_pt = (int((pt1[0] + (1/3)*delta_x)), int((pt1[1] + (1/3)*delta_y)))
+
+        ### Shift the circle toward the center a bit
+        xfc = R - cir_pt[0] # x distance from center
+        yfc = R - cir_pt[1] # y distance from center
+
+        shift_factor = 0.10 # Shifts the center point closer to the center by a factor if this much
+
+        shifted_x = int(cir_pt[0] + shift_factor * xfc)
+        shifted_y = int(cir_pt[1] + shift_factor * yfc)
+
+        x1, y1, x2, y2 = create_bb(image, (shifted_x, shifted_y), sl=side_length)
+        subimage = image[y1:y2, x1:x2]
+        subimages.append(subimage)
+
+    return subimages
+
+def get_hex_images(image, dst_points, side_length, num_offset):
+    """Finds and saves all the numbers on the Catan board of a homogrophied image
+    image: source image
+    dst_points: perimiter points of the board
+    sl: side length of bounding box for each number
+    save_dir: directory for images to be saved to
+    ind: how many images have already been saved to the directory
+    """
+    subimages = []
+    R = 526
+    # This is the actual center point
+    x1, y1, x2, y2 = create_bb(image,
+                               (R, R),
+                               side_length)
+    subimage_center = image[y1:y2, x1:x2]
+    subimages.append(subimage_center)
+    # This gets all the numbers that fall on the line between the center point of the board and the perimiter points
+    for pt in dst_points:
+        delta_x = R - pt[0]
+        delta_y = R - pt[1]
+
+        x1, y1, x2, y2 = create_bb(image, 
+                                   (int((R + (7/24)*delta_x)), 
+                                    int((R + (7/24)*delta_y))), 
+                                   side_length)
+        subimage1 = image[y1:y2, x1:x2]
+
+        x1, y1, x2, y2 = create_bb(image, 
+                                   (int((R + (3/5)*delta_x)), 
+                                    int((R + (3/5)*delta_y))), 
+                                    side_length)
+        subimage2 = image[y1:y2, x1:x2]
+
+        subimages.append(subimage1)
+        subimages.append(subimage2)
+
+    # This gets all the numbers not found by the center lines to the perimiter points using every other perimiter point to find the numbers
+    for i in range(len(dst_points)):
+        # Draw lines between every other corner
+        next_point_ind = i+2
+        if i+2 >= len(dst_points):
+            next_point_ind = i+2-len(dst_points)
+
+        pt1 = [dst_points[i][0], dst_points[i][1]]
+        pt2 = [dst_points[next_point_ind][0], dst_points[next_point_ind][1]]
+
+        # Draw circles at varying distances
+        delta_x = pt2[0] - pt1[0]
+        delta_y = pt2[1] - pt1[1]
+
+        ## Tests
+        cir_pt = (int((pt1[0] + (1/3)*delta_x)), int((pt1[1] + (1/3)*delta_y)))
+
+        ### Shift the circle toward the center a bit
+        xfc = R - cir_pt[0] # x distance from center
+        yfc = R - cir_pt[1] # y distance from center
+
+        shift_factor = 0.10 # Shifts the center point closer to the center by a factor if this much
+
+        shifted_x = int(cir_pt[0] + shift_factor * xfc)
+        shifted_y = int(cir_pt[1] + shift_factor * yfc)
+
+        x1, y1, x2, y2 = create_bb(image, (shifted_x, shifted_y), sl=side_length)
+        subimage = image[y1:y2, x1:x2]
+        subimages.append(subimage)
+
+    return subimages
+
+def pred_nums_on_resnet(img_dir) -> list:
     """
     images - list of subimages of the numbers of a Catan board
 
     returns a list of labels in the order the images are passed in
     """
+    # Load in the image directories
+    file_paths = sorted([os.path.join(img_dir, f) for f in os.listdir(img_dir) if os.path.isfile(os.path.join(img_dir, f))]) # Must be sorted for 
     # Set up and load the model
-    CLASS_NAMES = ["two", "three", "four", "five", "six", 
-                   "eight", "nine", "ten", "eleven", "twelve"]
-    CLASS_CNT = len(CLASS_NAMES) # ten numbers to be predicted
-    MODEL_SAVE_PATH = "./models/catanist_resnet.pth"
+    CLASS_NAMES = ['desert','eight','eleven','five','four','nine','six','ten','three','twelve','two']
+    CLASS_CNT = len(CLASS_NAMES) # eleven classes to be predicted
+    MODEL_SAVE_PATH = "./CATANIST/models/catanistv2_1.pth"
     LABELS = []
 
     # Device agnostic code
@@ -323,47 +462,78 @@ def pred_nums_on_resnet(images) -> list:
     input_transform = transforms.Compose([
         transforms.Resize(size=(64, 64)),
         transforms.Grayscale(num_output_channels=3),
-        transforms.ToTensor()
     ])
     # Put the model into eval mode
     resnet_model.eval()
-    for image in images:
-        transformed_img = input_transform(Image.fromarray(image[:3, :, :]))
+    for file in file_paths:
+        image = torchvision.io.read_image(str(file)).type(torch.float32)
+        image /= 255
+        transformed_img = input_transform(image[:3, :, :])
         with torch.inference_mode():
-            img_pred = resnet_model((transformed_img.unsqueezze(0)).to(device))
+            img_pred = resnet_model((transformed_img.unsqueeze(0)).to(device))
         # Logits -> Predictions probabilites -> Prediction labels -> class name
-        img_label = CLASS_NAMES[torch.argmax(torch.softmax(img_pred, dim=1), dim=1)]
+        img_pred_probs = torch.softmax(img_pred, dim=1)
+        img_pred_label = torch.argmax(img_pred_probs, dim=1)
+        img_label = CLASS_NAMES[img_pred_label]
         LABELS.append(img_label)
 
     return LABELS
+
+def pred_num_on_resnet(img_path):
+    # Set up and load the model
+    CLASS_NAMES = ['desert','eight','eleven','five','four','nine','six','ten','three','twelve','two']
+    CLASS_CNT = len(CLASS_NAMES) # eleven classes to be predicted
+    MODEL_SAVE_PATH = "./CATANIST/models/catanistv2_1.pth"
+    LABELS = []
+
+    # Device agnostic code
+    device = ("cuda" if torch.cuda.is_available()
+            else "mps" if torch.backends.mps.is_available()
+            else "cpu"
+            )
+
+    resnet_model = ResNet(input_shape=3, 
+                        block=BasicBlock,
+                        layers=[2, 2, 2],
+                        class_cnt=CLASS_CNT).to(device)
+
+    resnet_model.load_state_dict(torch.load(f=MODEL_SAVE_PATH))
+    resnet_model.to(device)
+
+    # Define the image transform
+    input_transform = transforms.Compose([
+        transforms.Resize(size=(64, 64)),
+        transforms.Grayscale(num_output_channels=3),
+    ])
+    # Put the model into eval mode
+    resnet_model.eval()
+    image = torchvision.io.read_image(str(img_path)).type(torch.float32)
+    image /= 255
+    transformed_img = input_transform(image[:3, :, :])
+    with torch.inference_mode():
+        img_pred = resnet_model((transformed_img.unsqueeze(0)).to(device))
+    # Logits -> Predictions probabilites -> Prediction labels -> class name
+    img_pred_probs = torch.softmax(img_pred, dim=1)
+    img_pred_label = torch.argmax(img_pred_probs, dim=1)
+    img_label = CLASS_NAMES[img_pred_label]
+    return img_label
 
 def show_predictions(subimages, labels):
     for i in range(len(subimages)):
         showImage(subimages[i], str(labels[i]))
 
 def main():
-    print("In main")
-    # Load in the images you want
-    test_img_dir = "./images/v5/"
-    ground_img_dirs = []
-    for filename in os.listdir(test_img_dir):
-        filepath = os.path.join(test_img_dir, filename)
-        if os.path.isfile(filepath):
-            ground_img_dirs.append(filepath)
-    print(ground_img_dirs[0])
-    # get homographied images
-    homographied_imgs = []
-    destination_point_lists = [] # list of lists that contain dst points for each image (used for finding bounding boxes)
-    for img in ground_img_dirs:
-        homographied_img, dst_points = homography_board(img)
-        homographied_imgs.append(homographied_img)
-        destination_point_lists.append(dst_points)
-    showImage(homographied_imgs[0])
-    # save number images for data
-    ind = 0
-    dir = "./images/cropped_numbers/"
-    for i, img in enumerate(homographied_imgs):
-        ind = save_num_images(img, destination_point_lists[i], 60, dir, ind)
+    img_dir = "./images/eval/eval00.jpg"
+    save_dir = "./images/eval numbers/"
+    homographied_board, dst_points = homography_board(image_dir=img_dir)
+    # Show the homographied board
+    showImage(homographied_board)
+    number_imgs = get_num_images(homographied_board, dst_points, side_length=60)
+    save_num_images(homographied_board, dst_points, side_length=60, save_dir=save_dir, ind=0)
+    # Predict numbers for each image
+    labels = pred_nums_on_resnet(save_dir)
+    # Visualize the results
+    show_predictions(number_imgs, labels)
 
 if __name__ == "__main__":
     main()
