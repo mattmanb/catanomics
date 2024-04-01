@@ -204,8 +204,10 @@ def predict_hexes_on_resnet(img_dir):
 
 def main():
     eval_img_path = "./images/eval/eval00.jpg"
+    og_img = cv2.imread(eval_img_path)
+    showImage(og_img)
     eval_save_path = "./images/eval hexes"
-    hom_img, dst_points = homography_board(eval_img_path, vis=False)
+    hom_img, dst_points = homography_board(eval_img_path, vis=True)
     showImage(hom_img)
     SIDE_LENGTH = 40
     PX_OFFSET = 55
