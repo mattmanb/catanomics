@@ -22,7 +22,6 @@ def save_hex_images(image, save_dir, dst_points, side_length, num_offset, ind):
     x1, y1, x2, y2 = create_bb(image,
                                (R, R - num_offset),
                                side_length)
-    print(type(x1), type(y1), type(x2), type(y2))
     subimage_center = image[y1:y2, x1:x2]
     subimages.append(subimage_center)
     # This gets all the numbers that fall on the line between the center point of the board and the perimiter points
@@ -98,7 +97,6 @@ def get_hex_images(image, dst_points, side_length, num_offset):
     x1, y1, x2, y2 = create_bb(image,
                                (R, R - num_offset),
                                side_length)
-    print(type(x1), type(y1), type(x2), type(y2))
     subimage_center = image[y1:y2, x1:x2]
     subimages.append(subimage_center)
     # This gets all the numbers that fall on the line between the center point of the board and the perimiter points
