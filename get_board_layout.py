@@ -1,17 +1,40 @@
 from misc_functions import order_labels
 from predict_numbers import homography_board, showImage, get_num_images, save_num_images, pred_nums_on_resnet, slope, y_intercept, calc_intersection
 from predict_hexes import get_hex_images, save_hex_images, predict_hexes_on_resnet
+import numpy as np
 
-def main():
+def score_junctions(junctions):
+    # These are the scores of each number (probability wise)
+    number_scores = {}
+    number_scores['two'], number_scores['twelve'] = 1, 1
+    number_scores['three'], number_scores['eleven'] = 2, 2
+    number_scores['four'], number_scores['ten'] = 3, 3
+    number_scores['five'], number_scores['nine'] = 4, 4
+    number_scores['six'], number_scores['eight'] = 5, 5
+    number_scores['desert'] = 0
+    junction_scores = []
+    for junction in junctions:
+        junction_score = 0
+        resources = set()
+        for hex in junction:
+            number = hex[0]
+            if hex[1] != 'desert':
+                resources.add(hex[1])
+            junction_score += number_scores[number]
+        junction_score += 0.5 * len(resources)
+        junction_scores.append([junction_score, junction])
+    return junction_scores
+
+def get_board_layout(input_image):
     # Constants
     NUM_IMG_SIDE_LENGTH = 60
     HEX_IMG_SIDE_LENGTH = 40
     HEX_IMG_OFFSET = 55 # number of pixels above the number images to fetch hex imgs
-    input_image = "./images/eval/eval00.jpg"
     num_imgs_dir = "./images/eval numbers"
     hex_imgs_dir = "./images/eval hexes"
     ind = 0 # This is for naming images
     board_data = []
+    junctions = []
 
     # Get the homographied board
     hom_img, corners = homography_board(input_image)
@@ -51,7 +74,71 @@ def main():
     board_data.append([[num_labels[16], hex_labels[16]], 
                        [num_labels[17], hex_labels[17]]])
     board_data.append([[num_labels[18], hex_labels[18]]])
-    print(board_data)
+    ### Now lets create all the junctions (access via [row][column])
+    # First row of placement spots
+    junctions.append([board_data[0][0]]) # 6 sheep, COAST
+    junctions.append([board_data[0][0]]) # 6 sheep, COAST
+    # Second row
+    junctions.append([board_data[1][0]]) # 9 brick COAST
+    junctions.append([board_data[0][0], board_data[1][0]]) # 9 brick, 6 sheep, COAST
+    junctions.append([board_data[0][0], board_data[1][1]]) # 9 wood, 6 sheep, COAST
+    junctions.append([board_data[1][1]]) # 9 wood, COAST
+    # Third row
+    junctions.append([board_data[2][0]]) # 4 wheat COAST
+    junctions.append([board_data[1][0], board_data[2][0]]) # 9 brick, 4 wheat, COAST
+    junctions.append([board_data[0][0], board_data[1][0], board_data[2][1]]) # 6 sheep, 9 brick, DESERT
+    junctions.append([board_data[0][0], board_data[1][1], board_data[2][1]]) # 6 sheep, 9 wood, DESERT
+    junctions.append([board_data[1][1], board_data[2][2]]) # 9 wood, 8 wheat, COAST
+    junctions.append([board_data[2][2]]) # 8 wheat, COAST
+    # Fourth row
+    junctions.append([board_data[2][0]]) # 4 wheat, COAST
+    junctions.append([board_data[1][0], board_data[2][0], board_data[3][0]]) # 9 brick, 4 wheat, 10 ore
+    junctions.append([board_data[1][0], board_data[2][1], board_data[3][0]]) # 9 brick, DESERT, 10 ore
+    junctions.append([board_data[1][1], board_data[2][1], board_data[3][1]]) # 9 wood, DESERT, 3 sheep
+    junctions.append([board_data[1][1], board_data[2][2], board_data[3][1]]) # 9 wood, 8 wheat, 3 sheep
+    junctions.append([board_data[2][2]]) # 8 wheat, COAST
+    # Fifth row
+    junctions.append([board_data[2][0], board_data[4][0]]) # 4 wheat, 10 sheep, COAST
+    junctions.append([board_data[2][0], board_data[3][0], board_data[4][0]]) # 4 wheat, 10 ore, 10 sheep
+    junctions.append([board_data[2][1], board_data[3][0], board_data[4][1]]) # DESERT, 10 ore, 5 wood
+    junctions.append([board_data[2][1], board_data[3][1], board_data[4][1]]) # DESERT, 3 sheep, 5 wood
+    junctions.append([board_data[2][2], board_data[3][1], board_data[4][2]]) # 8 wheat, 3 sheep, 2 wood
+    junctions.append([board_data[2][2], board_data[4][2]]) # 8 wheat, 2 wood, COAST
+    # Sixth row
+    junctions.append([board_data[4][0]]) # 10 sheep, COAST
+    junctions.append([board_data[3][0], board_data[4][0], board_data[5][0]]) # 10 ore, 10 sheep, 11 brick
+    junctions.append([board_data[3][0], board_data[4][1], board_data[5][0]]) # 10 ore, 5 wood, 11 brick
+    junctions.append([board_data[3][1], board_data[4][1], board_data[5][1]]) # 3 sheep, 5 wood, 5 wheat
+    junctions.append([board_data[3][1], board_data[4][2], board_data[5][1]]) # 3 sheep, 2 wood, 5 wheat
+    junctions.append([board_data[4][2]]) # 2 wood, COAST
+    # Seventh row
+    junctions.append([board_data[4][0], board_data[6][0]]) # 10 sheep, 3 wheat, COAST
+    junctions.append([board_data[4][0], board_data[5][0], board_data[6][0]]) # 10 sheep, 11 brick, 3 wheat
+    junctions.append([board_data[4][1], board_data[5][0], board_data[6][1]]) # 5 wood, 11 brick, 12(3) ore
+    junctions.append([board_data[4][1], board_data[5][1], board_data[6][1]]) # 5 wood, 5 wheat, 12(3) ore
+    junctions.append([board_data[4][2], board_data[5][1], board_data[6][2]]) # 2 wood, 5 wheat, 11 ore
+    junctions.append([board_data[4][2], board_data[6][2]]) # 2 wood, 11 ore, COAST
+    # Eighth row
+    junctions.append([board_data[6][0]]) # 3 wheat, COAST
+    junctions.append([board_data[5][0], board_data[6][0], board_data[7][0]]) # 11 brick, 3 wheat, 8 sheep
+    junctions.append([board_data[5][0], board_data[6][1], board_data[7][0]]) # 11 brick, 12(3) ore, 8 sheep
+    junctions.append([board_data[5][1], board_data[6][1], board_data[7][1]]) # 5 wheat, 12(3) ore, 4 wood
+    junctions.append([board_data[5][1], board_data[6][2], board_data[7][1]]) # 5 wheat, 11 ore, 4 wood
+    junctions.append([board_data[6][2]]) # 11 ore
+    # Ninth row
+    junctions.append([board_data[6][0]]) # 3 wheat, COAST
+    junctions.append([board_data[6][0], board_data[7][0]]) # 3 wheat, 8 sheep, COAST
+    junctions.append([board_data[6][1], board_data[7][0], board_data[8][0]]) # 12(3) ore, 8 sheep, 6 brick
+    junctions.append([board_data[6][1], board_data[7][1], board_data[8][0]]) # 12(3) ore, 4 wood, 6 brick
+    junctions.append([board_data[6][2], board_data[7][1]]) # 11 ore, 4 wood, COAST
+    junctions.append([board_data[6][2]]) # 11 ore, COAST
+    # Tenth row
+    junctions.append([board_data[7][0]]) # 8 sheep, COAST
+    junctions.append([board_data[7][0], board_data[8][0]]) # 8 sheep, 6 brick, COAST
+    junctions.append([board_data[7][1], board_data[8][0]]) # 4 wood, 6 brick, COAST
+    junctions.append([board_data[7][1]]) # 4 wood, COAST
+    # Eleventh (last) row
+    junctions.append([board_data[8][0]]) # 6 brick, COAST
+    junctions.append([board_data[8][0]]) # 6 brick, COAST
 
-if __name__=="__main__":
-    main()
+    return junctions

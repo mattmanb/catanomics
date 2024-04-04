@@ -20,7 +20,7 @@ def draw_hexagon_and_write_number(side_length, number):
     # Function to write number in center
     def write_number():
         hex_turtle.penup()
-        hex_turtle.goto(0, -15)  # Roughly center; adjust based on side_length for exact centering
+        hex_turtle.goto(0, 0)  # Roughly center; adjust based on side_length for exact centering
         hex_turtle.pendown()
         hex_turtle.write(number, move=False, align="center", font=("Arial", 16, "normal"))
         hex_turtle.penup()  # Stop drawing
