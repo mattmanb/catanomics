@@ -126,7 +126,7 @@ def homography_board(image, vis=False):
             line_equations.append((slope(line[0][0], line[0][1], line[1][0], line[1][1]), 
                                    y_intercept(line[0][0], line[0][1], line[1][0], line[1][1])))
         except:
-            pass
+            print("Error appending line data to line_equations.")
     
     # Get perimiter points
     perimeter_points = []
@@ -219,7 +219,7 @@ def create_bb(image, center_point, sl):
 
 def save_num_images(image, dst_points, side_length, save_dir, ind):
     """Finds and saves all the numbers on the Catan board of a homogrophied image
-    image: source image
+    image: homographied image
     dst_points: perimiter points of the board
     sl: side length of bounding box for each number
     save_dir: directory for images to be saved to
