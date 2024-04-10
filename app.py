@@ -37,7 +37,7 @@ def upload_file():
             except Exception as e:
                 output = "Error, try uploading a new image with the entire board within frame"
                 print(f"Error: {e}")
-                web_path = url_for('static', filename=os.path.join('uploads', "error_catan.jpg"))
+                web_path = url_for('static', filename=os.path.join('uploads', "error.jpg"))
             return render_template_string('''
                 <!doctype html>
                     <html lang="en">
@@ -56,6 +56,7 @@ def upload_file():
                                 <li>Ensure numbers are placed in the center of each hex</li>
                                 <li>Take the image from a top-down perspective</li>
                                 <li>Try to reduce glare in the image</li>
+                                <li>Note: if the board is set up incorrectly (wrong amount of hexes/numbers) an error will be thrown</li>
                                 <li>A sample image is shown on the homepage</li>
                             </ul>
                             <form method="post" enctype="multipart/form-data" class="upload-form">
@@ -97,6 +98,7 @@ def upload_file():
                 <li>Ensure numbers are placed in the center of each hex</li>
                 <li>Take the image from a top-down perspective</li>
                 <li>Try to reduce glare in the image</li>
+                <li>Note: if the board is set up incorrectly (wrong amount of hexes/numbers) an error will be thrown</li>
                 <li>A sample image is shown below:</li>
             </ul>
             <img src="./static/uploads/sample_img.jpeg" alt="sample upload image" class=sample-image>
