@@ -80,3 +80,7 @@ h1 {
 .top-spots p {
     margin: 0; /* Removes default margin from the paragraph for cleaner spacing */
 }
+
+.red {
+    color: red;
+}

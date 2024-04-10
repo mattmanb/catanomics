@@ -66,7 +66,7 @@ def upload_file():
                             </form>
                             {% if filename %}
                                 <p>Uploaded file: {{ filename }}</p>
-                                <p>If the image doesn't look right, reupload another image. Make sure all of the edge points are within the image,
+                                <p class="red">If the image doesn't look right, reupload another image. Make sure all of the edge points are within the image,
                                           or it will be processed incorrectly</p>
                             {% endif %}
                             <div class="results-section">
