@@ -1,6 +1,4 @@
-from misc_functions import order_labels
-from predict_numbers import homography_board, showImage, get_num_images, save_num_images, pred_nums_on_resnet, slope, y_intercept, calc_intersection
-from predict_hexes import get_hex_images, save_hex_images, predict_hexes_on_resnet
+from predict_board import *
 import numpy as np
 
 def score_junctions(junctions):
@@ -38,6 +36,7 @@ def get_board_layout(input_image):
 
     # Get the homographied board
     hom_img, corners = homography_board(input_image)
+    cv2.imwrite("./static/uploads/hom_img.jpg", hom_img)
     # Get the number and hex images
     save_num_images(hom_img, corners, NUM_IMG_SIDE_LENGTH, save_dir=num_imgs_dir, ind=0)
     save_hex_images(hom_img, save_dir=hex_imgs_dir, 

@@ -822,9 +822,9 @@ def adjust_hex_labels(labels, pred_probs, class_names, valid_board, predicted_bo
         return labels
     # Compare the confidence values of each prediction for that class
     # Reduce the number of predictions in this class by 1 in the predicted_board dict
-    print(f"Number of {invalid_class} predictions: {predicted_board[invalid_class]}")
+    # print(f"Number of {invalid_class} predictions: {predicted_board[invalid_class]}")
     invalid_indexes = [i for i, name in enumerate(labels) if name==invalid_class]
-    print(f"Possible invalid indexes: {invalid_indexes}")
+    # print(f"Possible invalid indexes: {invalid_indexes}")
     lowest_confidence = 1.0
     lowest_confidence_index = -1
     for i in invalid_indexes:
@@ -832,11 +832,11 @@ def adjust_hex_labels(labels, pred_probs, class_names, valid_board, predicted_bo
         if confidence_of_prediction < lowest_confidence:
             lowest_confidence = confidence_of_prediction
             lowest_confidence_index = i
-    print(f"Lowest confidence index for this class: {lowest_confidence_index}")
+    # print(f"Lowest confidence index for this class: {lowest_confidence_index}")
     # Take the lowest confidence and move the label to the next most confident
     index_to_modify = pred_probs[lowest_confidence_index].argmax(dim=1)[0]
     pred_probs[lowest_confidence_index][0][index_to_modify] = 0.0
-    print(f"Prediction probabilities of the invalid index:\n{pred_probs[lowest_confidence_index]}")
+    # print(f"Prediction probabilities of the invalid index:\n{pred_probs[lowest_confidence_index]}")
     new_class_pred = pred_probs[lowest_confidence_index].argmax(dim=1)
     new_class_pred_label = class_names[new_class_pred]
     # print(f"New prediction label: {new_class_pred_label}")
@@ -845,14 +845,23 @@ def adjust_hex_labels(labels, pred_probs, class_names, valid_board, predicted_bo
     # Recursive call validate_num_prediction to check if the new labels are now correct
     # labels = validate_hex_predictions(labels, pred_probs, class_names)
 
-    print(f"Correct labels: {labels}")
+    # print(f"Correct labels: {labels}")
 
     # Return valid labels
     return labels
 
+def order_labels(labels):
+    """This function is to order the images and labels so that the board is read left to right in terms of hexes"""
+    # This is the correct way to order the number/hex images to read left to right starting at the top most row
+    order = [2, 15, 16, 12, 1, 4, 11, 3, 14, 0, 17, 9, 5, 10, 7, 6, 13, 18, 8]
+    ordered_labels = []
+    for i in order:
+        ordered_labels.append(labels[i])
+    return ordered_labels
+
 def main():
     # This is all to create more training images right now
-    img_dir = "./images/v6/board07.jpeg"
+    img_dir = "./images/v6/board09.jpeg"
     num_save_dir = "./images/eval numbers/"
     hex_save_dir = "./images/eval hexes"
     # image_dirs = [os.path.join(img_dir, f) for f in os.listdir(img_dir) if os.path.isfile(os.path.join(img_dir, f))]
@@ -868,6 +877,11 @@ def main():
     num_labels = pred_nums_on_resnet(num_save_dir)
     hex_labels = predict_hexes_on_resnet(hex_save_dir)
     for i in range(len(num_labels)):
+        # if one model predicts desert, trust that prediction
+        if num_labels[i] == 'desert' and hex_labels[i] != num_labels[i]:
+            hex_labels[i] = 'desert'
+        elif hex_labels[i] == 'desert' and num_labels[i] != hex_labels[i]:
+            num_labels[i] = 'desert'
         print(f"{num_labels[i]} | {hex_labels[i]}")
 
     # for image_dir in image_dirs:

@@ -1,0 +1,82 @@
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: #f0f0f0;
+    color: #333;
+    margin: 0;
+    padding: 20px;
+}
+
+.container {
+    max-width: 600px;
+    margin: auto;
+    background: white;
+    padding: 20px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+}
+
+h1 {
+    color: #444;
+    font-size: 24px;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.upload-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.file-label {
+    background-color: #007bff;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: center;
+}
+
+.file-input {
+    display: none;
+}
+
+.submit-btn {
+    background-color: #28a745;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+.submit-btn:hover {
+    background-color: #218838;
+}
+
+.uploaded-image {
+    max-width: 100%; /* Makes the image responsive */
+    display: block; /* Removes any inline spacing */
+    margin: 20px auto; /* Centers the image and adds some space above and below */
+    border-radius: 8px; /* Optional: rounds the corners of the image */
+}
+
+.sample-image {
+    max-width: 50%; /* Makes the image responsive */
+    display: block; /* Removes any inline spacing */
+    margin: 20px auto; /* Centers the image and adds some space above and below */
+    border-radius: 8px; /* Optional: rounds the corners of the image */
+}
+
+.top-spots {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 20px;
+}
+
+.top-spots p {
+    margin: 0; /* Removes default margin from the paragraph for cleaner spacing */
+}

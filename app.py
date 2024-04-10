@@ -28,31 +28,87 @@ def upload_file():
         if file.filename == '':
             return redirect(request.url)
         if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
+            filename = secure_filename("uploaded_image.jpg")
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(file_path)
-            web_path = url_for('static', filename=os.path.join('uploads', filename))
-            output = get_top_placements(file_path)
+            try:
+                output = get_top_placements(file_path)
+                web_path = url_for('static', filename=os.path.join('uploads', "hom_img.jpg"))
+            except Exception as e:
+                output = "Error, try uploading a new image with the entire board within frame"
+                print(f"Error: {e}")
+                web_path = url_for('static', filename=os.path.join('uploads', "error_catan.jpg"))
             return render_template_string('''
                 <!doctype html>
-                <title>Upload new Image</title>
-                <h1>Upload another image</h1>
-                <form method=post enctype=multipart/form-data>
-                  <input type=file name=file>
-                  <input type=submit value=Upload>
-                </form>
-                <img src="{{ filepath }}" alt="uploaded image" width=400 />
-                <p>{{ output.replace('\n', '<br>')|safe }}</p>  <!-- Display the output here -->
-            ''', output=output, filepath=web_path)
+                    <html lang="en">
+                    <head>
+                        <meta charset="UTF-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                        <title>Upload New Image</title>
+                        <link rel="stylesheet" href="./static/styles.css"> <!-- Ensure the same CSS file is used -->
+                    </head>
+                    <body>
+                        <div class="container">
+                            <h1>Upload Another Catan Board</h1>
+                            <p>Things to make sure of when uploading an image:</p>
+                            <ul>
+                                <li>Upload an image before settlements/roads are placed</li>
+                                <li>Ensure numbers are placed in the center of each hex</li>
+                                <li>Take the image from a top-down perspective</li>
+                                <li>Try to reduce glare in the image</li>
+                                <li>A sample image is shown on the homepage</li>
+                            </ul>
+                            <form method="post" enctype="multipart/form-data" class="upload-form">
+                                <label for="file" class="file-label">Choose a file</label>
+                                <input type="file" name="file" id="file" class="file-input">
+                                <button type="submit" class="submit-btn">Upload</button>
+                            </form>
+                            {% if filename %}
+                                <p>Uploaded file: {{ filename }}</p>
+                                <p>If the image doesn't look right, reupload another image. Make sure all of the edge points are within the image,
+                                          or it will be processed incorrectly</p>
+                            {% endif %}
+                            <div class="results-section">
+                                <img src="{{ filepath }}" alt="Uploaded Image" class="uploaded-image" />
+                                <div class="top-spots">
+                                    <p>{{ output.replace('\n', '<br>')|safe }}</p> <!-- Display the output here -->
+                                </div>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+            ''', output=output, filepath=web_path, filename = file.filename)
 
     return '''
     <!doctype html>
-    <title>Upload new File</title>
-    <h1>Upload new File</h1>
-    <form method=post enctype=multipart/form-data>
-      <input type=file name=file>
-      <input type=submit value=Upload>
-    </form>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Upload New File</title>
+        <link rel="stylesheet" href="./static/styles.css"> <!-- Link to the CSS file -->
+    </head>
+    <body>
+        <div class="container">
+            <h1>Upload Catan Board</h1>
+            <p>Things to make sure of when uploading an image:</p>
+            <ul>
+                <li>Upload an image before settlements/roads are placed</li>
+                <li>Ensure numbers are placed in the center of each hex</li>
+                <li>Take the image from a top-down perspective</li>
+                <li>Try to reduce glare in the image</li>
+                <li>A sample image is shown below:</li>
+            </ul>
+            <img src="./static/uploads/sample_img.jpeg" alt="sample upload image" class=sample-image>
+            <form method="post" enctype="multipart/form-data" class="upload-form">
+                <label for="file" class="file-label">Choose a file</label>
+                <input type="file" name="file" id="file" class="file-input">
+                <button type="submit" class="submit-btn">Upload</button>
+            </form>
+        </div>
+    </body>
+    </html>
+
     '''
 
 @app.route('/uploads/<filename>')
