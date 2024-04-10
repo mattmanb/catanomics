@@ -9,26 +9,57 @@ from PIL import Image
 import os
 import random
 
+from predict_hexes import save_hex_images, predict_hexes_on_resnet
+
 def slope(x1,y1,x2,y2):
     ###finding slope
     if x2!=x1:
         return((y2-y1)/(x2-x1))
     else:
-        return 'NA'
+        return None
 
 def y_intercept(x1,y1,x2,y2):
     # y = mx+b OR b = y-mx
-    b = y1 - int(slope(x1, y1, x2, y2) * x1)
+    m = slope(x1, y1, x2, y2) * x1
+    if m:
+        b = y1 - int(m)
+    elif m == -0.0:
+        b = y1
+    else:
+        b = None
     return b
 
 def calc_intersection(m1,b1,m2,b2):
+    """
+    Returns the intersection points of two lines
+    Special Cases:
+        * One line is verticle (a solution is still returned)
+        * Both lines are verticle (no solution)
+        * The lines are parralel (no solution)
+    If there is no solution, an empty tuple is returned
+    """
     # Create the coefficient matrices
-    a = np.array([[-m1, 1], [-m2, 1]])
-    b = np.array([b1, b2])
-    try:
-        solution = np.linalg.solve(a, b)
-    except:
-        solution = (0,0)
+    if m1 == m2:
+        # both lines are verticle or parallel, no solution 
+        solution = tuple()
+    if isinstance(m1, str):
+        # The first line is verticle, solve using b1
+        x = b1
+        y = m2 * x + b2 # line 1's equation is x = b1
+        solution = (x, y)
+    elif isinstance(m2, str):
+        # The second line is verticle, solve using b2
+        x = b2
+        y = m1 * x + b1 # line 2's equation is x = b2
+        solution = (x, y)
+    else:
+        try:
+            # set up solving matrices
+            a = np.array([[-m1, 1], [-m2, 1]], dtype=np.float64)
+            b = np.array([b1, b2], dtype=np.float64)
+            solution = np.linalg.solve(a, b)
+        except np.linalg.LinAlgError:
+            return tuple()
 
     return solution
 
@@ -121,12 +152,18 @@ def homography_board(image, vis=False):
         showImage(image)
     # Get the line equations
     line_equations = []
+    # NEED TO FIX VERTICLE LINES
     for line in line_coords:
         try:
-            line_equations.append((slope(line[0][0], line[0][1], line[1][0], line[1][1]), 
-                                   y_intercept(line[0][0], line[0][1], line[1][0], line[1][1])))
-        except:
-            print("Error appending line data to line_equations.")
+            m = slope(line[0][0], line[0][1], line[1][0], line[1][1])
+            if m:
+                b = y_intercept(line[0][0], line[0][1], line[1][0], line[1][1])
+                line_equations.append((m, b))
+            else:
+                # This is if the line is verticle
+                line_equations.append(('verticle line', line[0][0]))
+        except Exception as e:
+            print("at line 160", e)
     
     # Get perimiter points
     perimeter_points = []
@@ -135,7 +172,9 @@ def homography_board(image, vis=False):
         for line_two in line_equations[ind+1:]:
             perimeter_point = calc_intersection(line_one[0], line_one[1],
                                                 line_two[0], line_two[1])
-            if perimeter_point[0] == 0 and perimeter_point[1] == 0:
+            if len(perimeter_point) != 2:
+                # calc_intersection returns an empty tuple if there is no intersection point
+                print("No intersection point, moving on...")
                 pass
             elif perimeter_point[0] >= 0 and perimeter_point[0] <= image_width and perimeter_point[1] >= 0 and perimeter_point[1] <= image_height:
                 perimeter_points.append((round(perimeter_point[0]), 
@@ -148,6 +187,7 @@ def homography_board(image, vis=False):
 
     dist_threshold = 25
 
+    # This is an infinite loop
     while len(good_pts) < 6:
         good_pts = []
         for i in range(len(perimeter_points)):
@@ -185,7 +225,6 @@ def homography_board(image, vis=False):
         rotated_point = np.dot(rotation_matrix, translated_point)
         dst_points.append([int(rotated_point[0]+R), int(rotated_point[1]+R)])
     dst_points = np.array(dst_points)
-    DST_PTS = dst_points
     ## HOMOGRAPHY
     # Compute homography matrix
     H, _ = cv2.findHomography(src_points, dst_points)
@@ -365,17 +404,18 @@ def get_num_images(image, dst_points, side_length):
 
 def pred_nums_on_resnet(img_dir) -> list:
     """
-    images - list of subimages of the numbers of a Catan board
+    img_dir: directory of images to be predicted upon
 
-    returns a list of labels in the order the images are passed in
+    returns a list of labels in alphabetical order (of the image names)
     """
     # Load in the image directories
     file_paths = sorted([os.path.join(img_dir, f) for f in os.listdir(img_dir) if os.path.isfile(os.path.join(img_dir, f))]) # Must be sorted for 
     # Set up and load the model
     CLASS_NAMES = ['desert','eight','eleven','five','four','nine','six','ten','three','twelve','two']
     CLASS_CNT = len(CLASS_NAMES) # eleven classes to be predicted
-    MODEL_SAVE_PATH = "./CATANIST/models/catanistv2_1.pth"
+    MODEL_SAVE_PATH = "./CATANIST/models/catanistv2_3.pth"
     LABELS = []
+    PRED_PROBS = []
 
     # Device agnostic code
     device = ("cuda" if torch.cuda.is_available()
@@ -408,7 +448,11 @@ def pred_nums_on_resnet(img_dir) -> list:
         img_pred_probs = torch.softmax(img_pred, dim=1)
         img_pred_label = torch.argmax(img_pred_probs, dim=1)
         img_label = CLASS_NAMES[img_pred_label]
+        PRED_PROBS.append(img_pred_probs.cpu())
         LABELS.append(img_label)
+    
+    # Ensure that the correct number of classes is predicted
+    LABELS = validate_num_predictions(LABELS, torch.stack(PRED_PROBS), class_names=CLASS_NAMES)
 
     return LABELS
 
@@ -451,22 +495,117 @@ def pred_num_on_resnet(img_path):
     img_label = CLASS_NAMES[img_pred_label]
     return img_label
 
-def show_predictions(subimages, labels):
+def validate_num_predictions(labels, pred_probs, class_names):
+    valid_board = { 'two': 1,
+                    'three': 2,
+                    'four': 2,
+                    'five': 2,
+                    'six': 2, 
+                    'eight': 2,
+                    'nine': 2,
+                    'ten': 2,
+                    'eleven': 2,
+                    'twelve': 1,
+                    'desert': 1 }
+    predicted_board = { 'two': 0,
+                        'three': 0,
+                        'four': 0,
+                        'five': 0,
+                        'six': 0, 
+                        'eight': 0,
+                        'nine': 0,
+                        'ten': 0,
+                        'eleven': 0,
+                        'twelve': 0,
+                        'desert': 0 }
+    for label in labels:
+        predicted_board[label] += 1
+    
+    # Compare the dictionaries of the valid board and the predicted board
+    flag = 0
+    for i in valid_board:
+        if valid_board.get(i) != predicted_board.get(i):
+            flag = 1
+            break
+    if flag == 0:
+        return labels
+    else:
+        labels = adjust_labels(labels, pred_probs, class_names, valid_board, predicted_board)
+    return labels
+
+def adjust_labels(labels, pred_probs, class_names, valid_board, predicted_board):
+    """This function is meant to fix number labels if invalid board predictions come through
+    labels- current prediction labels (to be adjusted)
+    pred_probs- the confidence values of each class for each label (this'll be used to adjust the labels)
+    valid_board- dictionary of class names and how many of that class SHOULD BE predicted
+    predicted_board- dictionary of class names and how many of that class WAS predicted
+    """
+    # Find where there is a discrepancy in the predicted numbers
+    invalid_class = 'N/A'
+    for pred_class, num_preds in predicted_board.items():
+        # ind is the index within the dictionary that we're looking at
+        # pred_class is the string class 
+        # num_preds is the number of predictions for this class
+        if num_preds > valid_board[pred_class]: # if a class has been predicted too many times
+            invalid_class = pred_class
+    if invalid_class == 'N/A':
+        return labels
+    # Compare the confidence values of each prediction for that class
+    # Reduce the number of predictions in this class by 1 in the predicted_board dict
+    # print(f"Number of {invalid_class} predictions: {predicted_board[invalid_class]}")
+    invalid_indexes = [i for i, name in enumerate(labels) if name==invalid_class]
+    # print(f"Possible invalid indexes: {invalid_indexes}")
+    lowest_confidence = 1.0
+    lowest_confidence_index = -1
+    for i in invalid_indexes:
+        confidence_of_prediction = pred_probs[i].max(dim=1)[0]
+        if confidence_of_prediction < lowest_confidence:
+            lowest_confidence = confidence_of_prediction
+            lowest_confidence_index = i
+    # print(f"Lowest confidence index for this class: {lowest_confidence_index}")
+    # Take the lowest confidence and move the label to the next most confident
+    index_to_modify = pred_probs[lowest_confidence_index].argmax(dim=1)[0]
+    pred_probs[lowest_confidence_index][0][index_to_modify] = 0.0
+    # print(f"Prediction probabilities of the invalid index:\n{pred_probs[lowest_confidence_index]}")
+    new_class_pred = pred_probs[lowest_confidence_index].argmax(dim=1)
+    new_class_pred_label = class_names[new_class_pred]
+    # print(f"New prediction label: {new_class_pred_label}")
+    labels[lowest_confidence_index] = new_class_pred_label
+    
+    # Recursive call validate_num_prediction to check if the new labels are now correct
+    labels = validate_num_predictions(labels, pred_probs, class_names)
+
+    # print(f"Correct labels: {labels}")
+
+    # Return valid labels
+    return labels
+
+def show_predictions(subimages, labels):#
     for i in range(len(subimages)):
         showImage(subimages[i], str(labels[i]))
 
 def main():
-    img_dir = "./images/eval/eval00.jpg"
-    save_dir = "./images/eval numbers/"
-    homographied_board, dst_points = homography_board(image_dir=img_dir)
-    # Show the homographied board
-    showImage(homographied_board)
-    number_imgs = get_num_images(homographied_board, dst_points, side_length=60)
-    save_num_images(homographied_board, dst_points, side_length=60, save_dir=save_dir, ind=0)
-    # Predict numbers for each image
-    labels = pred_nums_on_resnet(save_dir)
-    # Visualize the results
-    show_predictions(number_imgs, labels)
+    # This is all to create more training images right now
+    img_dir = "./images/v6/board07.jpeg"
+    num_save_dir = "./images/eval numbers/"
+    hex_save_dir = "./images/eval hexes"
+    # image_dirs = [os.path.join(img_dir, f) for f in os.listdir(img_dir) if os.path.isfile(os.path.join(img_dir, f))]
+    # ind = 190
+    NUM_SIDE_LENGTH = 60
+    HEX_SIDE_LENGTH = 40
+    # print(image_dirs)
+    image = cv2.imread(img_dir)
+    hom_img, perimeter_pts = homography_board(image)
+    save_num_images(hom_img, perimeter_pts, NUM_SIDE_LENGTH, num_save_dir, 0)
+    save_hex_images(hom_img, perimeter_pts, HEX_SIDE_LENGTH)
+    num_labels = pred_nums_on_resnet(num_save_dir)
+    hex_labels = predict_hexes_on_resnet(hex_save_dir)
+
+    # for image_dir in image_dirs:
+    #     image = cv2.imread(image_dir)
+    #     hom_img, perimeter_points = homography_board(image)
+    #     ind = save_num_images(hom_img, perimeter_points, SIDE_LENGTH, save_dir, ind)
+    # print("Done saving images")
 
 if __name__ == "__main__":
     main()

@@ -75,6 +75,7 @@ def get_board_layout(input_image):
                        [num_labels[17], hex_labels[17]]])
     board_data.append([[num_labels[18], hex_labels[18]]])
     ### Now lets create all the junctions (access via [row][column])
+    ## The comments next to junction appends is on a sample board to help me keep track of all junctions
     # First row of placement spots
     junctions.append([board_data[0][0]]) # 6 sheep, COAST
     junctions.append([board_data[0][0]]) # 6 sheep, COAST

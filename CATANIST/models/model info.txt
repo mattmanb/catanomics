@@ -1,0 +1,8 @@
+### catanistv2_1.pth
+Epoch: 25 | train_loss: 0.1505 | train_acc: 0.9688 | test_loss: 0.7504 | test_acc: 0.8333
+
+### catanistv2_2.pth
+Epoch: 25 | train_loss: 0.0145 | train_acc: 0.9991 | test_loss: 0.2460 | test_acc: 0.9167
+
+### catanistv2_3.pth
+Epoch: 25 | train_loss: 0.0342 | train_acc: 0.9913 | test_loss: 0.0598 | test_acc: 0.9896
