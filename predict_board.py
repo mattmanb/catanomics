@@ -75,7 +75,7 @@ def saveImage(filename, img, dir):
     cv2.imwrite(full_path, img)
     print(f"Image saved to {full_path}")
 
-def homography_board(image, vis=False):
+def homography_board(image, vis=False, hom=True):
     if isinstance(image, str):
         image = cv2.imread(image)
     if vis:
@@ -90,6 +90,8 @@ def homography_board(image, vis=False):
     upper_blue = np.array([140, 255, 255])
     # Get the mask of just the blue regions
     mask = cv2.inRange(hsv_img, lower_blue, upper_blue)
+    if vis:
+        showImage(mask)
     # Get the bitwise_and of the blue region (1 if blue, 0 if not)
     blue_region = cv2.bitwise_and(image, image, mask=mask)
     # Format image so guassian blur and canny edge can be performed
@@ -203,7 +205,7 @@ def homography_board(image, vis=False):
     # Visualize the points if wanted
     if vis:
         for pt in good_pts:
-            cv2.circle(image, pt, 5, (255, 255, 0), -1)
+            cv2.circle(image, pt, 20, (0, 0, 255), -1)
         showImage(image, "Perimiter points")
 
     # Set up points for homography
@@ -229,7 +231,7 @@ def homography_board(image, vis=False):
 
     # Apply homography to warp the real test_image to the ideal Catan board's perspective
     warped_image = cv2.warpPerspective(image, H, (1052, 1052))
-    if vis:
+    if vis or hom:
         showImage(warped_image, "After")
 
     return warped_image, dst_points
@@ -871,18 +873,18 @@ def main():
     HEX_OFFSET = 55
     # print(image_dirs)
     image = cv2.imread(img_dir)
-    hom_img, perimeter_pts = homography_board(image)
+    hom_img, perimeter_pts = homography_board(image, vis=False, hom=True)
     save_num_images(hom_img, perimeter_pts, NUM_SIDE_LENGTH, num_save_dir, 0)
     save_hex_images(hom_img, hex_save_dir, perimeter_pts, HEX_SIDE_LENGTH, HEX_OFFSET, 0)
     num_labels = pred_nums_on_resnet(num_save_dir)
     hex_labels = predict_hexes_on_resnet(hex_save_dir)
-    for i in range(len(num_labels)):
-        # if one model predicts desert, trust that prediction
-        if num_labels[i] == 'desert' and hex_labels[i] != num_labels[i]:
-            hex_labels[i] = 'desert'
-        elif hex_labels[i] == 'desert' and num_labels[i] != hex_labels[i]:
-            num_labels[i] = 'desert'
-        print(f"{num_labels[i]} | {hex_labels[i]}")
+    # for i in range(len(num_labels)):
+    #     # if one model predicts desert, trust that prediction
+    #     if num_labels[i] == 'desert' and hex_labels[i] != num_labels[i]:
+    #         hex_labels[i] = 'desert'
+    #     elif hex_labels[i] == 'desert' and num_labels[i] != hex_labels[i]:
+    #         num_labels[i] = 'desert'
+    #     print(f"{num_labels[i]} | {hex_labels[i]}")
 
     # for image_dir in image_dirs:
     #     image = cv2.imread(image_dir)
