@@ -75,7 +75,7 @@ def saveImage(filename, img, dir):
     cv2.imwrite(full_path, img)
     print(f"Image saved to {full_path}")
 
-def homography_board(image, vis=False, hom=True):
+def homography_board(image, vis=False, hom=False):
     if isinstance(image, str):
         image = cv2.imread(image)
     if vis:
