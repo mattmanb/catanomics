@@ -4,23 +4,34 @@ import numpy as np
 def score_junctions(junctions):
     # These are the scores of each number (probability wise)
     number_scores = {}
+    # The scores of each number depends on the number of dots beneath the number on the Catan board (each dot represents a 1/36 chance for the sum to be rolled with 2d6)
     number_scores['two'], number_scores['twelve'] = 1, 1
     number_scores['three'], number_scores['eleven'] = 2, 2
     number_scores['four'], number_scores['ten'] = 3, 3
     number_scores['five'], number_scores['nine'] = 4, 4
     number_scores['six'], number_scores['eight'] = 5, 5
-    number_scores['desert'] = 0
-    junction_scores = []
+    # The desert doesn't produce resources
+    number_scores['desert'] = 0 
+    junction_scores = [] # list that will store the score of each junction as well as the junction itself per element i.e. [junction_score, junction]
     for junction in junctions:
+        # start at 0 for the junction
         junction_score = 0
+        # store each unique resource that gets produced at the junction
         resources = set()
+        # Iterate through each hex adjecent to the junction
         for hex in junction:
+            # get the number for the hex
             number = hex[0]
+            # add the resource to the set of resources this junction has if it isn't 'desert'
             if hex[1] != 'desert':
                 resources.add(hex[1])
+            # add the score of the number to the total junction_score
             junction_score += number_scores[number]
+        # for each unique resource that lies adjacent to the junction, add 0.5 to the score
         junction_score += 0.5 * len(resources)
+        # Add the junction score and junction itself as a list to the junction_scores list
         junction_scores.append([junction_score, junction])
+    # Return all the junction scores paired with the junction itself
     return junction_scores
 
 def get_board_layout(input_image):

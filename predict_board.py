@@ -15,19 +15,26 @@ import random
 
 def slope(x1,y1,x2,y2):
     ###finding slope
+    # if x2 = x1 then the slope is infinity
     if x2!=x1:
+        # change in y / change in x
         return((y2-y1)/(x2-x1))
     else:
+        # The slope DNE (divide by 0 error)
         return None
 
 def y_intercept(x1,y1,x2,y2):
     # y = mx+b OR b = y-mx
     m = slope(x1, y1, x2, y2) * x1
+    # if the slope exists (`slope` function returns None if it doesn't)
     if m:
+        # the y-intercept is y - mx
         b = y1 - int(m)
+    # This is a weird result I was getting from slope, which basically means the line is horizontal, so this catches that result from the `slope` function
     elif m == -0.0:
         b = y1
     else:
+        # if the slope doesn't exist, return None
         b = None
     return b
 
@@ -59,6 +66,7 @@ def calc_intersection(m1,b1,m2,b2):
             # set up solving matrices
             a = np.array([[-m1, 1], [-m2, 1]], dtype=np.float64)
             b = np.array([b1, b2], dtype=np.float64)
+            # use numpy to solve the matrices
             solution = np.linalg.solve(a, b)
         except np.linalg.LinAlgError:
             return tuple()
@@ -954,9 +962,9 @@ def adjust_hex_labels(labels, pred_probs, class_names, valid_board, predicted_bo
 
 def order_labels(labels):
     """This function is to order the images and labels so that the board is read left to right in terms of hexes"""
-    # This is the correct way to order the number/hex images to read left to right starting at the top most row
+    # This is the correct way to order the number/hex images to read left to right starting at the top most row of the homographied image
     order = [2, 15, 16, 12, 1, 4, 11, 3, 14, 0, 17, 9, 5, 10, 7, 6, 13, 18, 8]
-    ordered_labels = []
+    ordered_labels = [] # list that will store the labels in the correct order
     for i in order:
         ordered_labels.append(labels[i])
     return ordered_labels
