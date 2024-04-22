@@ -1,3 +1,7 @@
+"""
+This file is the main hunk of code that performs a lot of the logic requires to pre-process the image and predict the numbers/hexes using a trained model that is saved in the project ("./CATANIST/models" and "./HEXIST/models")
+"""
+
 import torch
 import torchvision
 from torchvision import transforms
@@ -76,6 +80,14 @@ def saveImage(filename, img, dir):
     print(f"Image saved to {full_path}")
 
 def homography_board(image, vis=False, hom=False):
+    """Process an image of a Catan board into a top-down version
+
+    Keyword arguments:
+    image -- cv2 image or image file path
+    vis -- boolean to visualize the processes within homographying the image for error checking
+    hom -- boolean to visualize the end product ONLY
+    """
+    # if the image passed in is a string, assume it is a file path; if it isn't, then we assume that image is already read in using cv2
     if isinstance(image, str):
         image = cv2.imread(image)
     if vis:
@@ -85,7 +97,7 @@ def homography_board(image, vis=False, hom=False):
     image = cv2.resize(image, (1052, 1052))
     # Convert to HSV
     hsv_img = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    # Define the color range of the border
+    # Define the color range of the border (blue ocean border)
     lower_blue = np.array([100, 150, 0])
     upper_blue = np.array([140, 255, 255])
     # Get the mask of just the blue regions
@@ -105,101 +117,146 @@ def homography_board(image, vis=False, hom=False):
 
     ## Hough Transform for perimiter lines
     lines = []
+    # This threshold value will be reduced until 10 lines are found
     thresh = 200
+    # Go until 10 lines are found (only 6 lines sometimes doesn't find all 6 perimeter edges because some overlap)
     while len(lines) < 10:
+        # Call houghlines with the current threshold
         lines=cv2.HoughLines(edges, 1, np.pi / 180, thresh)
+        # If we have 10 or more lines, leave the while loop
         if len(lines) >= 10:
             break
+        # If 10 lines are NOT found, lower the threshold then go to the next iteration of the loop
         else:
             thresh -= 5
 
     # Find overlapping lines from hough transform
-    min_rho_diff = 10 # the minimum distance between two lines to determine if they are for the same side
-    min_theta_diff = 0.05
+    min_rho_diff = 10 # the minimum distance between two lines to determine if they are for the same line
+    min_theta_diff = 0.05 # the minimum angle between two lines to determine if they are for the same line
+    # this set will hold the indexes of all `overlapping` lines
     overlapping_indexes = set()
 
+    # Until we have 6 lines remaining, continue looking through lines for overlapping lines
     while len(lines) - len(overlapping_indexes) > 6:
+        # Iterate through lines starting at the first line, then comparing side by side with the remaining lines to see if they overlap (using min rho and min theta)
         for i in range(len(lines)):
+            # get the rho and theta values of the first line
             rho, theta = lines[i, 0]
+            # iterate through remaining lines to compare to the line we are currently looking at
             for j in range(i+1, len(lines)):
+                # Get the second line's rho and theta values
                 rho2, theta2 = lines[j, 0]
+                # check to see if the lines are within the min rho and min theta differences
                 if abs(rho-rho2) < min_rho_diff and abs(theta-theta2) < min_theta_diff:
+                    # if the lines are overlapping, add this line's index to `overlapping_indexes`
                     overlapping_indexes.add(j)
+        # Add to the min rho and min theta difference in case we haven't narrowed it down to 6 lines
         min_rho_diff += 1
+        min_theta_diff += 0.01
     perimiter_lines = [] # these are the actual perimiter lines after overlap is removed
-    # Get the perimiter lines
+    # Get the perimiter lines by not adding lines that are considered 'overlapping' (if the line's index is in `overlapping_indexes` it is considered 'overlapping')
     for i in range(len(lines)):
         if i not in overlapping_indexes:
             perimiter_lines.append(lines[i])
 
     ## Finding the perimiter POINTS from the perimiter lines
-    line_coords = []
+    line_coords = [] # This list will hold the xy starting points and ending points of each remaining line (this will form a lines 2000px long)
+    # 'For' loop to iterate over each line remaining, pulling each line's polar data and converting it into xy start and end coordinates
     for index, line in enumerate(perimiter_lines):
-    # for index, line in enumerate(lines):
+        # Pull the polar coordinates out of this line
         rho, theta = line[0]
+        # Calculate xy coordinates of a line following the polar data for the line
         a = np.cos(theta)
         b = np.sin(theta)
         x0 = a * rho
         y0 = b * rho
+        # Add/subtract 1000 to extend the line for a more accurate slope calculation
         x1 = int(x0 + 1000 * (-b))
         y1 = int(y0 + 1000 * (a))
         x2 = int(x0 - 1000 * (-b))
         y2 = int(y0 - 1000 * (a))
+        # Append the line's coordinates to `line_coords`
         line_coords.append([(x1, y1), (x2, y2)])
         if vis:
             cv2.line(image, (x1, y1), (x2, y2), (255, 0, 0), 3)
     if vis:
         showImage(image)
     # Get the line equations
-    line_equations = []
-    # NEED TO FIX VERTICLE LINES
+    line_equations = [] # This list will store the slope and y-intercept of each line
+    # Iterate through each line in `line_coords`
     for line in line_coords:
+        # Was having trouble with this code block, try-catch is to catch if a line is verticle, which results in a divide by 0 error
+        # Instead of throwing an error, I assume the line is verticle so I set the slope as 'verticle line' and the y-intercept as the x-value
         try:
+            # Call 'slope' function and send in the start and end xy coords
             m = slope(line[0][0], line[0][1], line[1][0], line[1][1])
+            # if the slope DNE (is None) then the line is verticle, in which case we catch it here
             if m:
+                # calculate the y-intercept given the coordinates 
                 b = y_intercept(line[0][0], line[0][1], line[1][0], line[1][1])
+                # append the line's equation to `line_equations`
                 line_equations.append((m, b))
             else:
                 # This is if the line is verticle
                 line_equations.append(('verticle line', line[0][0]))
         except Exception as e:
+            # If this except block happens, then something is actually going wrong (not verticle line related)
             print("at line 160", e)
     
     # Get perimiter points
-    perimeter_points = []
+    perimeter_points = [] # list that will contain the actual xy coordinates of the board's perimeter
+    # get the shape of the image
     image_height, image_width, _ = image.shape
+    # iterate over all the lines, calculating intersections between the two to find perimeter points (a lot of the intersections won't matter, and that is handled in the for loop)
     for ind, line_one in enumerate(line_equations):
+        # We have the first line, not iterate over the rest of the lines and calculate the intersections
         for line_two in line_equations[ind+1:]:
+            # use `calc_intersection` function to find the intersection point between two lines
             perimeter_point = calc_intersection(line_one[0], line_one[1],
                                                 line_two[0], line_two[1])
+            # if `calc_intersection` doesn't return a tuple of two values (xy coords) then the lines are parallel
             if len(perimeter_point) != 2:
                 # calc_intersection returns an empty tuple if there is no intersection point
                 print("No intersection point, moving on...")
                 pass
+            # Check to make sure the perimeter point is inside the bounds of the image (if it isn't, then the intersection is meaningless)
             elif perimeter_point[0] >= 0 and perimeter_point[0] <= image_width and perimeter_point[1] >= 0 and perimeter_point[1] <= image_height:
+                # append the perimeter point to `perimeter_points`
                 perimeter_points.append((round(perimeter_point[0]), 
                                           round(perimeter_point[1])))
-                
+    
+    # binary images of canny edge detection to get all the meaningful intersections 
     inverted_edges = 255 - edges
+    # this transform calculates the distance from a passed in point to any turned on pixel of the canny edge detection
     dist_transform = cv2.distanceTransform(inverted_edges, cv2.DIST_L2, 5)
 
+    # This list will hold all the ACTUAL perimeter points
     good_pts = []
 
+    # This is the threshold of how close a point must be to a turned on pixel of the canny edge image
     dist_threshold = 25
 
-    # This is an infinite loop
+    # Until 6 perimeter points are found, continuously increase the distance_threshold to find the closest intersection points to the Canny edge border
     while len(good_pts) < 6:
+        # Empty `good_pts`
         good_pts = []
+        # iterate over each perimeter point
         for i in range(len(perimeter_points)):
+            # get the x and y values of the point
             x, y = perimeter_points[i]
+            # calculate the distance to the closest turned on pixel using dist_transform
             dist_to_edge = dist_transform[y, x]
+            # if the distance to the edge is less than the distance threshold, we found a valid point
             if dist_to_edge < dist_threshold:
+                # Ensure no more than 6 points are added to the list
                 if len(good_pts) < 6:
                     good_pts.append(perimeter_points[i])
+        # Add 5 to the distance threshold for the next iteration of the loop in case 6 points weren't found
         dist_threshold += 5
     
     # Order the points
-    centroid = np.mean(good_pts, axis=0)
+    centroid = np.mean(good_pts, axis=0) # this is the center point of the image
+    # Using angles from the centroid, we can order the 6 points in a clockwise fashion
     sorted_points = sorted(good_pts, key=lambda point: np.arctan2(point[1] - centroid[1], point[0] - centroid[0]))
     
     # Visualize the points if wanted
@@ -209,21 +266,29 @@ def homography_board(image, vis=False, hom=False):
         showImage(image, "Perimiter points")
 
     # Set up points for homography
-    src_points = np.array(sorted_points)
+    src_points = np.array(sorted_points) # this is 'source' points, or the actual perimeter points in the uploaded image
+    # R is half of the width/height of the image
     R = 526
+    # The center point is 526, 526 (half the width/height)
     center = np.array([R, R])
 
+    # This is all to calculate the 'optimal' perimeter point locations, or the points that `src_points` will be mapped to (we need to rotate 90 degrees to get it in the format we want)
     theta = np.pi / 2
     rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)],
                                 [np.sin(theta), np.cos(theta)]])
     hexagon_points = np.array([(center[0] + R * np.cos(2 * np.pi / 6 * i), center[1] + R * np.sin(2 * np.pi / 6 * i)) for i in range(6)])
 
+    # This list will hold all the destination points, or the points where we WANT the perimeter points to be
     dst_points = []
 
+    # Iterate over hexagon_points (the dst_points) and rotate the points into the orientation we want
     for point in hexagon_points:
         translated_point = point - center
+        # rotate the point around the center 90 degrees
         rotated_point = np.dot(rotation_matrix, translated_point)
+        # Append the point to `dst_points` for further use
         dst_points.append([int(rotated_point[0]+R), int(rotated_point[1]+R)])
+    # Change dst_points into a numpy array to be sent into findHomography function
     dst_points = np.array(dst_points)
     ## HOMOGRAPHY
     # Compute homography matrix
@@ -234,6 +299,7 @@ def homography_board(image, vis=False, hom=False):
     if vis or hom:
         showImage(warped_image, "After")
 
+    # Return the warped image, as well as the designated point locations which will be used to get all the number and hex images from the warped image
     return warped_image, dst_points
 
 def create_bb(image, center_point, sl):
@@ -256,83 +322,95 @@ def create_bb(image, center_point, sl):
 
     return tl_corner[0], tl_corner[1], br_corner[0], br_corner[1]
 
-def save_num_images(image, dst_points, side_length, save_dir, ind):
+def save_num_images(image, dst_points, side_length, save_dir, imgNum):
     """Finds and saves all the numbers on the Catan board of a homogrophied image
-    image: homographied image
+    image: homographied image (cv2 read in already)
     dst_points: perimiter points of the board
-    sl: side length of bounding box for each number
+    sl: side length of bounding box for each number image
     save_dir: directory for images to be saved to
-    ind: how many images have already been saved to the directory
+    ind: how many images have already been saved to the directory (for naming convention)
     """
-    subimages = []
-    R = 526
-    # This is the actual center point
+    subimages = [] # list that will hold the number subimages
+    R = 526 # half the width/height of the homographied image
+    # get the number in the center of the board using `create_bb` (create_bb returns the top left and bottom right coordinates of the image)
     x1, y1, x2, y2 = create_bb(image,
                                (R, R),
                                side_length)
-    subimage_center = image[y1:y2, x1:x2]
+    # Get the subimage from the homographied image
+    subimage_center = image[y1:y2, x1:x2] # calculate the center of the image
+    # Append the center number to the subimages list
     subimages.append(subimage_center)
     # This gets all the numbers that fall on the line between the center point of the board and the perimiter points
     for pt in dst_points:
         delta_x = R - pt[0]
         delta_y = R - pt[1]
-
+        # it just happens that the numbers surrounding the center hex are 7/24ths of the way between the center and a perimeter point (the center is 7/24ths of the way) NOTE*** this was found through experimentation as well as the second number along the line
         x1, y1, x2, y2 = create_bb(image, 
                                    (int((R + (7/24)*delta_x)), 
                                     int((R + (7/24)*delta_y))), 
                                    side_length)
+        # get the subimage from the passed in image
         subimage1 = image[y1:y2, x1:x2]
 
+        # Get the second image across the line (it just happens to be 3/5ths of the way across)
         x1, y1, x2, y2 = create_bb(image, 
                                    (int((R + (3/5)*delta_x)), 
                                     int((R + (3/5)*delta_y))), 
                                     side_length)
+        # get the subimage from the passed in image
         subimage2 = image[y1:y2, x1:x2]
 
+        # append the two images found to `subimages`
         subimages.append(subimage1)
         subimages.append(subimage2)
 
     # This gets all the numbers not found by the center lines to the perimiter points using every other perimiter point to find the numbers
     for i in range(len(dst_points)):
-        # Draw lines between every other corner
+        # Look at perimeter points two spaces away from each other (the line connecting these points has numbers that cannot be found from a line drawn from the center of the image)
         next_point_ind = i+2
+        # If the next index is out of the range, wrap to the beginning of the list
         if i+2 >= len(dst_points):
             next_point_ind = i+2-len(dst_points)
 
+        # Get the two perimeter points we're looking at currently
         pt1 = [dst_points[i][0], dst_points[i][1]]
         pt2 = [dst_points[next_point_ind][0], dst_points[next_point_ind][1]]
 
-        # Draw circles at varying distances
+        # Calculate the distance from one point to the next
         delta_x = pt2[0] - pt1[0]
         delta_y = pt2[1] - pt1[1]
 
-        ## Tests
+        ## Get the point 1/3 across the line connecting the two points (this doesn't work perfectly, and needs to be adjusted)
         cir_pt = (int((pt1[0] + (1/3)*delta_x)), int((pt1[1] + (1/3)*delta_y)))
 
-        ### Shift the circle toward the center a bit
+        ### Shift the circle toward the center (this more accurately gets the image of the number)
         xfc = R - cir_pt[0] # x distance from center
         yfc = R - cir_pt[1] # y distance from center
 
-        shift_factor = 0.10 # Shifts the center point closer to the center by a factor if this much
+        shift_factor = 0.10 # Shifts the center point closer to the center by a factor of this much
 
+        # Shift the center point of the number image toward the center by a factor of the shift factor
         shifted_x = int(cir_pt[0] + shift_factor * xfc)
         shifted_y = int(cir_pt[1] + shift_factor * yfc)
 
+        # Get the bounding box coords of the number (NOTE: only the first number is collected since the same numbers would be collected twice if the second number across the line was also collected)
         x1, y1, x2, y2 = create_bb(image, (shifted_x, shifted_y), sl=side_length)
+
+        # Get the subimage using the bounding box coords and append to subimages
         subimage = image[y1:y2, x1:x2]
         subimages.append(subimage)
 
-    # Save the images
+    # Save the images to `save_dir`
     for img in subimages:
-        if ind < 10:
-            saveImage(f"00{ind}.jpg", img, save_dir)
-        elif ind < 100:
-            saveImage(f"0{ind}.jpg", img, save_dir)
+        if imgNum < 10:
+            saveImage(f"00{imgNum}.jpg", img, save_dir)
+        elif imgNum < 100:
+            saveImage(f"0{imgNum}.jpg", img, save_dir)
         else:
-            saveImage(f"{ind}.jpg", img, save_dir)
-        ind += 1
+            saveImage(f"{imgNum}.jpg", img, save_dir)
+        imgNum += 1
     
-    return ind
+    return imgNum
 
 def get_num_images(image, dst_points, side_length):
     """Finds and saves all the numbers on the Catan board of a homogrophied image
@@ -428,7 +506,7 @@ def pred_nums_on_resnet(img_dir) -> list:
                         layers=[2, 2, 2],
                         class_cnt=CLASS_CNT).to(device)
 
-    resnet_model.load_state_dict(torch.load(f=MODEL_SAVE_PATH))
+    resnet_model.load_state_dict(torch.load(f=MODEL_SAVE_PATH, map_location=device))
     resnet_model.to(device)
 
     # Define the image transform
@@ -458,9 +536,13 @@ def pred_nums_on_resnet(img_dir) -> list:
 
 def pred_num_on_resnet(img_path):
     # Set up and load the model
+    # Set the list of class names in the correct order (same as the neural network)
     CLASS_NAMES = ['desert','eight','eleven','five','four','nine','six','ten','three','twelve','two']
+    # Get the number of classes
     CLASS_CNT = len(CLASS_NAMES) # eleven classes to be predicted
+    # Get the save path of the model file
     MODEL_SAVE_PATH = "./CATANIST/models/catanistv2_1.pth"
+    # List where the predicted labels will be stored in addition to the confidence levels of each class
     LABELS = []
 
     # Device agnostic code
@@ -468,31 +550,44 @@ def pred_num_on_resnet(img_path):
             else "mps" if torch.backends.mps.is_available()
             else "cpu"
             )
+    
+    print(f"DEVICE: {device}\n")
 
+    # Instantiate the model (same as the trained model)
     resnet_model = ResNet(input_shape=3, 
                         block=BasicBlock,
                         layers=[2, 2, 2],
                         class_cnt=CLASS_CNT).to(device)
 
+    # Load the state dictionary to get the pretrained model's parameters
     resnet_model.load_state_dict(torch.load(f=MODEL_SAVE_PATH))
+    # Set the model to the device
     resnet_model.to(device)
 
-    # Define the image transform
+    # Define the image transform (image pre-processing)
     input_transform = transforms.Compose([
         transforms.Resize(size=(64, 64)),
         transforms.Grayscale(num_output_channels=3),
     ])
     # Put the model into eval mode
     resnet_model.eval()
+    # Read the image in using torchvision so it is the correct type/format
     image = torchvision.io.read_image(str(img_path)).type(torch.float32)
+    # Get pixel values between 0 and 1 instead of 0-255
     image /= 255
+    # put the image through the image transform defined earlier in the function
     transformed_img = input_transform(image[:3, :, :])
+    # Enable torch inference mode
     with torch.inference_mode():
+        # Get the image prediction (the model outputs raw logits)
         img_pred = resnet_model((transformed_img.unsqueeze(0)).to(device))
+    # Interpret the output logits using softmax and then determining what class the model is most confident 
     # Logits -> Predictions probabilites -> Prediction labels -> class name
     img_pred_probs = torch.softmax(img_pred, dim=1)
     img_pred_label = torch.argmax(img_pred_probs, dim=1)
+    # Get the actual class label 
     img_label = CLASS_NAMES[img_pred_label]
+
     return img_label
 
 def validate_num_predictions(labels, pred_probs, class_names):
@@ -584,25 +679,30 @@ def show_predictions(subimages, labels):#
     for i in range(len(subimages)):
         showImage(subimages[i], str(labels[i]))
 
-def save_hex_images(image, save_dir, dst_points, side_length, num_offset, ind):
+def save_hex_images(image, save_dir, dst_points, side_length, num_offset, imgNum):
     """ Get all the images for a NN to identify hex types
+    image: cv2 read in image of the homographied Catan board
+    save_dir: directory to save the hex images
     dst_points: perimiter points of the board
     side_length: side length of bounding box for each number
     num_offset: the number of pixels above the number point
     """
-    subimages = []
-    R = 526
-    # This is the actual center point
+    subimages = [] # list of where the hex images will be saved
+    R = 526 # half the height/width
+    # Get the hex subimage of the center hex
     x1, y1, x2, y2 = create_bb(image,
                                (R, R - num_offset),
                                side_length)
+    # Collect the subimage from the passed in image
     subimage_center = image[y1:y2, x1:x2]
+    # Append the subimage to the list of subimages
     subimages.append(subimage_center)
-    # This gets all the numbers that fall on the line between the center point of the board and the perimiter points
+    # This section gets all the numbers that fall on the line between the center point of the board and the perimiter points
     for pt in dst_points:
         delta_x = R - pt[0]
         delta_y = R - pt[1]
-
+        
+        # NOTE: the subimages are collected almost identically to the number images in `save_num_images` except the center point is above the center point of the number image by `num_offset` which is a parameter passed into this function
         x1, y1, x2, y2 = create_bb(image, 
                                    (int((R + (7/24)*delta_x)), 
                                     int((R + (7/24)*delta_y) - num_offset)), 
@@ -649,15 +749,15 @@ def save_hex_images(image, save_dir, dst_points, side_length, num_offset, ind):
         subimages.append(subimage)
 
     for img in subimages:
-        if ind < 10:
-            saveImage(f"00{ind}.jpg", img, save_dir)
-        elif ind < 100:
-            saveImage(f"0{ind}.jpg", img, save_dir)
+        if imgNum < 10:
+            saveImage(f"00{imgNum}.jpg", img, save_dir)
+        elif imgNum < 100:
+            saveImage(f"0{imgNum}.jpg", img, save_dir)
         else:
-            saveImage(f"{ind}.jpg", img, save_dir)
-        ind += 1
+            saveImage(f"{imgNum}.jpg", img, save_dir)
+        imgNum += 1
 
-    return ind
+    return imgNum
 
 def get_hex_images(image, dst_points, side_length, num_offset):
     """ Get all the images for a NN to identify hex types
@@ -751,7 +851,7 @@ def predict_hexes_on_resnet(img_dir):
                         layers=[2, 2, 2],
                         class_cnt=CLASS_CNT).to(device)
 
-    resnet_model.load_state_dict(torch.load(f=MODEL_SAVE_PATH))
+    resnet_model.load_state_dict(torch.load(f=MODEL_SAVE_PATH, map_location=device))
     resnet_model.to(device)
 
     # Define the image transform

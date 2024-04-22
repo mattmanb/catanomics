@@ -25,25 +25,28 @@ def score_junctions(junctions):
 
 def get_board_layout(input_image):
     # Constants
-    NUM_IMG_SIDE_LENGTH = 60
-    HEX_IMG_SIDE_LENGTH = 40
+    NUM_IMG_SIDE_LENGTH = 60 # This is the side length of the subimages of numbers on the Catan board (60 is enough to get the whole number consistently as long as the numbers are placed close to the center of each hex)
+    HEX_IMG_SIDE_LENGTH = 40 # This is the side length of the subimages of hex numbers on the Catan board
     HEX_IMG_OFFSET = 55 # number of pixels above the number images to fetch hex imgs
-    num_imgs_dir = "./images/eval numbers"
-    hex_imgs_dir = "./images/eval hexes"
-    ind = 0 # This is for naming images
-    board_data = []
+    num_imgs_dir = "./images/eval numbers" # directory where the cropped number images will be saved (temporarily)
+    hex_imgs_dir = "./images/eval hexes" # directory for saving cropped hex images
+    imgNum = 0 # The number appending to the image (numbered to ensure the correct number of images are collected)
+    # `board_data` will store each hex's information in the order it is collected (so it is NOT sorted)
+    board_data = [] 
+    # `junctions` will store the information reguarding each junction, which is 1-3 hexes
     junctions = []
 
     # Get the homographied board
     hom_img, corners = homography_board(input_image)
+    # Save the homographied image in case a function later reads in a file path instead of a cv2 image (either can be used, previous uploads get overwritten)
     cv2.imwrite("./static/uploads/hom_img.jpg", hom_img)
     # Get the number and hex images
-    save_num_images(hom_img, corners, NUM_IMG_SIDE_LENGTH, save_dir=num_imgs_dir, ind=0)
+    save_num_images(hom_img, corners, NUM_IMG_SIDE_LENGTH, save_dir=num_imgs_dir, imgNum=0)
     save_hex_images(hom_img, save_dir=hex_imgs_dir, 
                     dst_points=corners, 
                     side_length=HEX_IMG_SIDE_LENGTH, 
                     num_offset=HEX_IMG_OFFSET,
-                    ind=0)
+                    imgNum=0)
     # Predict all the numbers and hex types
     num_labels = pred_nums_on_resnet(num_imgs_dir)
     hex_labels = predict_hexes_on_resnet(hex_imgs_dir)
@@ -51,9 +54,8 @@ def get_board_layout(input_image):
     num_labels = order_labels(num_labels)
     hex_labels = order_labels(hex_labels)
 
-    # for i in range(len(num_labels)):
-    #     print(num_labels[i], hex_labels[i])
 
+    # append all the predicted number and hex labels to board_data in a left-right top-bottom order looking at the homographied image
     board_data.append([[num_labels[0], hex_labels[0]]])
     board_data.append([[num_labels[1], hex_labels[1]], 
                        [num_labels[2], hex_labels[2]]])
@@ -73,8 +75,9 @@ def get_board_layout(input_image):
     board_data.append([[num_labels[16], hex_labels[16]], 
                        [num_labels[17], hex_labels[17]]])
     board_data.append([[num_labels[18], hex_labels[18]]])
-    ### Now lets create all the junctions (access via [row][column])
-    ## The comments next to junction appends is on a sample board to help me keep track of all junctions
+
+    ### Now we create all the junctions (access via [row][column])
+    ## The comments next to junction appends is on a SAMPLE BOARD to help me keep track of all junctions
     # First row of placement spots
     junctions.append([board_data[0][0]]) # 6 sheep, COAST
     junctions.append([board_data[0][0]]) # 6 sheep, COAST
@@ -141,4 +144,5 @@ def get_board_layout(input_image):
     junctions.append([board_data[8][0]]) # 6 brick, COAST
     junctions.append([board_data[8][0]]) # 6 brick, COAST
 
+    # Return the list of junctions
     return junctions
