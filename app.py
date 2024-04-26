@@ -33,7 +33,7 @@ def upload_file():
             file.save(file_path)
             try:
                 output = get_top_placements(file_path)
-                web_path = url_for('static', filename=os.path.join('uploads', "hom_img.jpg"))
+                web_path = "./static/uploads/hom_img.jpg" # url_for('static', filename=os.path.join('uploads', "hom_img.jpg"))
                 return render_template_string('''
                     <!doctype html>
                         <html lang="en">
@@ -77,7 +77,7 @@ def upload_file():
             except Exception as e:
                 output = "Error, try uploading a new image with the entire board within frame"
                 print(f"Error: {e}")
-                web_path = url_for('static', filename=os.path.join('uploads', "error.jpg"))
+                web_path = "./static/uploads/error.jpg" # url_for('static', filename=os.path.join('uploads', "error.jpg"))
                 return render_template_string('''
                     <!doctype html>
                         <html lang="en">
